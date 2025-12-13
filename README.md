@@ -232,7 +232,6 @@ lsp_code_actions(
 )
 ```
 
-```
 
 ### AI Agent Benefits
 
