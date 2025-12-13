@@ -534,7 +534,7 @@ function write_vscode_settings(settings::Dict)
     settings_path = get_ide_settings_path()
     ide_dir = dirname(settings_path)
 
-    # Create .cursor or .vscode directory if it doesn't exist
+    # Create .vscode directory if it doesn't exist (always .vscode, even for Cursor)
     if !isdir(ide_dir)
         mkdir(ide_dir)
     end
@@ -548,6 +548,22 @@ function write_vscode_settings(settings::Dict)
         @warn "Failed to write IDE settings.json" exception = e
         return false
     end
+end
+
+"""
+    print_workspace_settings_warning()
+
+Print a warning about workspace settings scope - they only apply when the workspace folder
+is opened directly, not when opened as a subfolder or via a .code-workspace file.
+"""
+function print_workspace_settings_warning()
+    println()
+    println("   ⚠️  Note: Settings in .vscode/settings.json only apply when this folder")
+    println("       is opened directly as a workspace folder. If you opened a parent")
+    println("       folder or a .code-workspace file, move these settings to:")
+    println("       • The .code-workspace file's \"settings\" section, or")
+    println("       • Open this folder directly (not as a part of a workspace)")
+    println()
 end
 
 function get_startup_script_path()
@@ -672,8 +688,7 @@ function prompt_and_setup_vscode_startup(; gentle::Bool = false)
     if has_args
         println("   ✓ VS Code already configured to load startup script")
     else
-        ide_dir = detect_ide() == :cursor ? ".cursor" : ".vscode"
-        println("   • Will update: $(ide_dir)/settings.json")
+        println("   • Will update: .vscode/settings.json")
         println("     (adds --load flag to julia.additionalArgs)")
     end
 
@@ -718,11 +733,11 @@ function prompt_and_setup_vscode_startup(; gentle::Bool = false)
 
         # Configure IDE settings if needed
         if !has_args
-            ide_dir = detect_ide() == :cursor ? ".cursor" : ".vscode"
             if configure_vscode_julia_args()
-                println("   ✅ Updated $(ide_dir)/settings.json")
+                println("   ✅ Updated .vscode/settings.json")
+                print_workspace_settings_warning()
             else
-                println("   ❌ Failed to update $(ide_dir)/settings.json")
+                println("   ❌ Failed to update .vscode/settings.json")
                 success = false
             end
         end
@@ -793,8 +808,8 @@ function prompt_and_setup_vscode_extension()
             else
                 println("   ✅ Installed VS Code Remote Control extension")
             end
-            println("   ✅ Configured allowed commands")
-            println()
+            println("   ✅ Configured allowed commands in .vscode/settings.json")
+            print_workspace_settings_warning()
             if detect_ide() == :cursor
                 println("   📁 Extension files created at: ~/.cursor/extensions/")
                 println("   💡 If auto-loading doesn't work, manually install the VSIX")
@@ -1079,13 +1094,13 @@ function setup(; gentle::Bool = false)
 
     # Configure IDE settings for startup script
     ide_name = detect_ide() == :cursor ? "Cursor" : "VS Code"
-    ide_dir = detect_ide() == :cursor ? ".cursor" : ".vscode"
     if !check_vscode_startup_configured()
         println("📝 Configuring $(ide_name) to load startup script...")
         if configure_vscode_julia_args()
-            println("   ✅ Updated $(ide_dir)/settings.json")
+            println("   ✅ Updated .vscode/settings.json")
+            print_workspace_settings_warning()
         else
-            println("   ❌ Failed to update $(ide_dir)/settings.json")
+            println("   ❌ Failed to update .vscode/settings.json")
         end
     else
         println("📝 $(ide_name) settings: ✅ Configured to load startup script")
