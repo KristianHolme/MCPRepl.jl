@@ -1136,11 +1136,18 @@ function route_to_repl_streaming(
         @info "Sending request to backend" url = backend_url method = method body_length =
             length(body_str)
 
+        # Build headers for backend request, forwarding Authorization if present
+        backend_headers = ["Content-Type" => "application/json"]
+        auth_header = HTTP.header(original_req, "Authorization")
+        if !isempty(auth_header)
+            push!(backend_headers, "Authorization" => auth_header)
+        end
+
         # Make request to backend - use simple HTTP.request with response streaming disabled
         backend_response = HTTP.request(
             "POST",
             backend_url,
-            ["Content-Type" => "application/json"],
+            backend_headers,
             body_str;
             readtimeout = 30,
             connect_timeout = 5,
@@ -2395,10 +2402,18 @@ function handle_request(http::HTTP.Stream)
 
                     backend_url = "http://127.0.0.1:$(repl.port)/"
                     body_str = JSON.json(request_dict)
+
+                    # Forward Authorization header to backend
+                    backend_headers = ["Content-Type" => "application/json"]
+                    auth_header = HTTP.header(req, "Authorization")
+                    if !isempty(auth_header)
+                        push!(backend_headers, "Authorization" => auth_header)
+                    end
+
                     backend_response = HTTP.request(
                         "POST",
                         backend_url,
-                        ["Content-Type" => "application/json"],
+                        backend_headers,
                         body_str;
                         readtimeout = 5,
                         connect_timeout = 2,
@@ -2798,6 +2813,38 @@ function handle_request(http::HTTP.Stream)
                     return nothing
                 end
             end
+        elseif method == "prompts/list"
+            # Return empty prompts list (MCPRepl doesn't use prompts)
+            HTTP.setstatus(http, 200)
+            HTTP.setheader(http, "Content-Type" => "application/json")
+            HTTP.startwrite(http)
+            write(
+                http,
+                JSON.json(
+                    Dict(
+                        "jsonrpc" => "2.0",
+                        "id" => get(request, "id", nothing),
+                        "result" => Dict("prompts" => []),
+                    ),
+                ),
+            )
+            return nothing
+        elseif method == "resources/list"
+            # Return empty resources list (MCPRepl doesn't use resources)
+            HTTP.setstatus(http, 200)
+            HTTP.setheader(http, "Content-Type" => "application/json")
+            HTTP.startwrite(http)
+            write(
+                http,
+                JSON.json(
+                    Dict(
+                        "jsonrpc" => "2.0",
+                        "id" => get(request, "id", nothing),
+                        "result" => Dict("resources" => []),
+                    ),
+                ),
+            )
+            return nothing
         else
             # Unknown method - route to backend if available
             repls = list_repls()

@@ -1,4 +1,5 @@
-# ========== VS Code Remote Control: create, install, and configure (workspace) ==========
+# ========== IDE Remote Control: create, install, and configure (workspace) ==========
+# Supports both VS Code and Cursor
 
 """
     install_vscode_remote_control(workspace_dir; publisher="your-publisher-id",
@@ -6,10 +7,12 @@
                                   allowed_commands=["workbench.action.files.save"],
                                   require_confirmation=false)
 
-Creates a minimal VS Code extension that exposes a `vscode://` URI handler, installs it
-(by copying into the user's VS Code extensions dir), and updates the given workspace's
-`.vscode/settings.json` to allow the specified command IDs and (optionally) disable the
-confirmation prompt.
+Creates a minimal extension that exposes a `vscode://` or `cursor://` URI handler
+(depending on detected IDE), installs it into the user's extensions directory,
+and updates the workspace settings to allow the specified command IDs.
+
+Automatically detects whether you're running in VS Code or Cursor and uses the
+appropriate extensions directory and URI scheme.
 
 Usage:
     install_vscode_remote_control(pwd(); allowed_commands=[
@@ -29,12 +32,14 @@ function install_vscode_remote_control(
 
     # -------------------------------- paths --------------------------------
     ext_folder_name = "$(publisher).$(name)-$(version)"
-    exts_dir = vscode_extensions_dir()
+    exts_dir = ide_extensions_dir()
     ext_path = joinpath(exts_dir, ext_folder_name)
     src_path = joinpath(ext_path, "out")
     workspace_dir = abspath(workspace_dir)
-    ws_vscode = joinpath(workspace_dir, ".vscode")
-    ws_settings_path = joinpath(ws_vscode, "settings.json")
+    # Settings always go in .vscode (even for Cursor)
+    # Only mcp.json goes in .cursor for Cursor
+    ws_vscode_dir = joinpath(workspace_dir, ".vscode")
+    ws_settings_path = joinpath(ws_vscode_dir, "settings.json")
 
     # Remove old extension versions if they exist
     if isdir(exts_dir)
@@ -53,7 +58,7 @@ function install_vscode_remote_control(
     end
 
     mkpath(src_path)
-    mkpath(ws_vscode)
+    mkpath(ws_vscode_dir)
 
     # --------------------------- write package.json -------------------------
     pkgjson = """
@@ -311,21 +316,32 @@ function install_vscode_remote_control(
           authHeader = `Bearer ${nonceFromUri}`;
         }
         
-        // Try to read port from .vscode/mcp.json
+        // Try to read port from .cursor/mcp.json or .vscode/mcp.json
         try {
           const workspaceFolders = vscode.workspace.workspaceFolders;
           if (workspaceFolders && workspaceFolders.length > 0) {
-            const mcpConfigPath = path.join(workspaceFolders[0].uri.fsPath, '.vscode', 'mcp.json');
+            const wsPath = workspaceFolders[0].uri.fsPath;
+            // Check both .cursor and .vscode directories
+            const configPaths = [
+              path.join(wsPath, '.cursor', 'mcp.json'),
+              path.join(wsPath, '.vscode', 'mcp.json')
+            ];
+            
+            for (const mcpConfigPath of configPaths) {
             if (fs.existsSync(mcpConfigPath)) {
               const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
-              if (mcpConfig.servers && mcpConfig.servers['julia-repl']) {
-                const juliaServer = mcpConfig.servers['julia-repl'];
+                // Check both 'mcpServers' (Cursor) and 'servers' (VS Code) keys
+                const servers = mcpConfig.mcpServers || mcpConfig.servers;
+                if (servers && servers['julia-repl']) {
+                  const juliaServer = servers['julia-repl'];
                 
                 // Extract port from URL
                 if (juliaServer.url) {
                   const urlMatch = juliaServer.url.match(/localhost:(\d+)/);
                   if (urlMatch) {
                     mcpConfigPort = parseInt(urlMatch[1], 10);
+                      break; // Found port, stop searching
+                    }
                   }
                 }
               }
@@ -449,24 +465,36 @@ function install_vscode_remote_control(
     json_str = JSON.json(existing, 2)
     write(ws_settings_path, json_str)
 
+    ide_name = detect_ide() == :cursor ? "Cursor" : "VS Code"
+    scheme = detect_ide() == :cursor ? "cursor" : "vscode"
     println("Installed extension into: ", ext_path)
     println("Workspace settings updated at: ", ws_settings_path)
     println("Now you can call, e.g.:")
-    println("  open(\"vscode://$(publisher).$(name)?cmd=workbench.action.reloadWindow\")")
+    println("  open(\"$(scheme)://$(publisher).$(name)?cmd=workbench.action.reloadWindow\")")
 
     return ext_path
 end
 
 # ------------------------ helpers: paths ------------------------
 
-function vscode_extensions_dir()
-    # Default per-user extensions dir used by VS Code
+"""
+    ide_extensions_dir()
+
+Returns the extensions directory for the current IDE (Cursor or VS Code).
+"""
+function ide_extensions_dir()
     home = homedir()
+    # Determine which IDE we're in
+    ide_folder = detect_ide() == :cursor ? ".cursor" : ".vscode"
+
     if Sys.iswindows()
-        # %USERPROFILE%\.vscode\extensions
-        return joinpath(get(ENV, "USERPROFILE", home), ".vscode", "extensions")
+        # %USERPROFILE%\.cursor\extensions or %USERPROFILE%\.vscode\extensions
+        return joinpath(get(ENV, "USERPROFILE", home), ide_folder, "extensions")
     else
         # macOS & Linux
-        return joinpath(home, ".vscode", "extensions")
+        return joinpath(home, ide_folder, "extensions")
     end
 end
+
+# Keep old name for backwards compatibility
+vscode_extensions_dir() = ide_extensions_dir()

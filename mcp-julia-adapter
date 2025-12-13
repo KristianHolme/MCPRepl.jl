@@ -2,15 +2,20 @@
 """
 MCP Julia REPL Adapter
 
-This adapter bridges stdin/stdout MCP clients to the HTTP-based Julia MCP server.
-It reads JSON-RPC messages from stdin and forwards them to http://localhost:3000,
-then returns responses to stdout.
+Bridges stdio MCP transport to MCPRepl's HTTP proxy.
+Enables any stdio-based MCP client to connect to MCPRepl.
+
+Environment variables:
+    JULIA_MCP_PORT: Proxy port (default: 3000)
+    JULIA_MCP_API_KEY: Bearer token for authentication (optional)
+    JULIA_MCP_TARGET: Target REPL name for routing (optional)
 
 Usage:
-    ./mcp-julia-adapter
-
-The Julia MCP server must be running first:
-    julia --project -e "using MCPRepl; MCPRepl.start!()"
+    # Basic usage (connects to localhost:3000)
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize",...}' | ./mcp-julia-adapter
+    
+    # With environment variables
+    JULIA_MCP_PORT=3000 JULIA_MCP_API_KEY=mykey JULIA_MCP_TARGET=myproject ./mcp-julia-adapter
 """
 
 import json
@@ -18,82 +23,116 @@ import os
 import sys
 import urllib.request
 import urllib.error
-import time
 
 
 def main():
-    """Main adapter loop - reads stdin, forwards to HTTP server, writes to stdout"""
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-
-        port = sys.argv[1] if len(sys.argv) > 1 else None
-        if not port:
-            port = os.getenv("JULIA_MCP_PORT", "3000")
+    """Main adapter loop - reads JSON-RPC from stdin, forwards to HTTP, writes to stdout"""
+    session_id = None  # MCP session ID from initialize response
+    
+    # Read config from environment
+    port = os.getenv("JULIA_MCP_PORT", "3000")
+    api_key = os.getenv("JULIA_MCP_API_KEY")
+    target = os.getenv("JULIA_MCP_TARGET")
+    
+    # Use unbuffered readline to avoid pipe buffering issues
+    # This is more reliable for stdio MCP transport than `for line in sys.stdin:`
+    while True:
         try:
-            # Parse JSON-RPC request from stdin
+            line = sys.stdin.readline()
+            if not line:  # EOF
+                break
+            line = line.strip()
+            if not line:
+                continue
+        except EOFError:
+            break
+        
+        request = None
+        try:
+            # Parse JSON-RPC request
             request = json.loads(line)
-
-            # Forward to HTTP server with timeout
-            data = json.dumps(request).encode('utf-8')
-            req = urllib.request.Request(f'http://localhost:{port}',
-                                       data=data,
-                                       headers={'Content-Type': 'application/json'})
-
+            request_id = request.get("id")
+            
+            # Build headers
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            if target:
+                headers["X-MCPRepl-Target"] = target
+            if session_id:
+                headers["Mcp-Session-Id"] = session_id
+            
+            # Forward to proxy
+            data = json.dumps(request).encode("utf-8")
+            req = urllib.request.Request(
+                f"http://localhost:{port}",
+                data=data,
+                headers=headers
+            )
+            
             with urllib.request.urlopen(req, timeout=600) as response:
-                result = json.loads(response.read().decode('utf-8'))
+                # Capture session ID from initialize response
+                new_session_id = response.getheader("Mcp-Session-Id")
+                if new_session_id:
+                    session_id = new_session_id
+                
+                result = json.loads(response.read().decode("utf-8"))
+                
+                # JSON-RPC 2.0: Notifications (requests without id) should NOT get a response
+                # Only output response if the original request had an id
+                if request_id is None:
+                    # This was a notification - don't output response per JSON-RPC spec
+                    continue
+                
+                # Ensure valid JSON-RPC 2.0 format for responses
+                if isinstance(result, dict):
+                    result["jsonrpc"] = "2.0"
+                    # Ensure response id matches request id
+                    if result.get("id") is None:
+                        result["id"] = request_id
+                
                 print(json.dumps(result), flush=True)
-
-        except json.JSONDecodeError as e:
-            # Invalid JSON from stdin
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {
-                    "code": -32700,
-                    "message": f"Parse error: {str(e)}"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
-
+        
+        except urllib.error.HTTPError as e:
+            # HTTP error - try to extract error response
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+                error_data = json.loads(error_body)
+                # If it's valid JSON-RPC, forward it
+                if isinstance(error_data, dict) and "jsonrpc" in error_data:
+                    error_data["jsonrpc"] = "2.0"
+                    if request and request.get("id") is not None:
+                        if error_data.get("id") is None:
+                            error_data["id"] = request.get("id")
+                    print(json.dumps(error_data), flush=True)
+                    continue
+            except:
+                pass
+            
+            # Create JSON-RPC error
+            _send_error(request, -32603, f"HTTP {e.code}: {e.reason}")
+        
         except urllib.error.URLError as e:
-            # Connection failed to HTTP server - try to recover
-            request_id = request.get("id") if 'request' in locals() else None
-
-            # For connection errors, try a brief retry
-            if "Connection refused" in str(e):
-                try:
-                    time.sleep(0.1)  # Brief delay
-                    with urllib.request.urlopen(req, timeout=600) as response:
-                        result = json.loads(response.read().decode('utf-8'))
-                        print(json.dumps(result), flush=True)
-                        continue
-                except:
-                    pass  # Fall through to error response
-
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32603,
-                    "message": f"Connection failed: {str(e)}. Is the Julia MCP server running?"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
-
+            _send_error(request, -32603, f"Connection failed: {e}. Is the proxy running?")
+        
+        except json.JSONDecodeError as e:
+            _send_error(None, -32700, f"Parse error: {e}")
+        
         except Exception as e:
-            # Other errors - ensure proper ID handling
-            request_id = request.get("id") if 'request' in locals() else None
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            }
-            print(json.dumps(error_response), flush=True)
+            _send_error(request, -32603, f"Internal error: {e}")
+
+
+def _send_error(request, code, message):
+    """Send a JSON-RPC error response"""
+    response = {
+        "jsonrpc": "2.0",
+        "error": {"code": code, "message": message}
+    }
+    # Only include id if request had one (not for notifications or parse errors)
+    if request and request.get("id") is not None:
+        response["id"] = request.get("id")
+    print(json.dumps(response), flush=True)
 
 
 if __name__ == "__main__":

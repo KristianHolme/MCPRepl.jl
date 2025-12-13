@@ -323,10 +323,19 @@ function cleanup_old_nonces(max_age::Float64 = 60.0)
 end
 
 # ============================================================================
-# VS Code URI Helpers
+# IDE URI Helpers (VS Code / Cursor)
 # ============================================================================
 
-# Helper function to trigger VS Code commands via URI
+"""
+    get_ide_uri_scheme() -> String
+
+Returns the URI scheme for the current IDE ("cursor" or "vscode").
+"""
+function get_ide_uri_scheme()
+    return detect_ide() == :cursor ? "cursor" : "vscode"
+end
+
+# Helper function to trigger IDE commands via URI
 function trigger_vscode_uri(uri::String)
     if Sys.isapple()
         run(`open $uri`)
@@ -339,7 +348,7 @@ function trigger_vscode_uri(uri::String)
     end
 end
 
-# Helper function to build VS Code command URI
+# Helper function to build IDE command URI (works for both VS Code and Cursor)
 function build_vscode_uri(
     command::String;
     args::Union{Nothing,String} = nothing,
@@ -349,7 +358,9 @@ function build_vscode_uri(
     publisher::String = "MCPRepl",
     name::String = "vscode-remote-control",
 )
-    uri = "vscode://$(publisher).$(name)?cmd=$(command)"
+    # Use cursor:// or vscode:// based on detected IDE
+    scheme = get_ide_uri_scheme()
+    uri = "$(scheme)://$(publisher).$(name)?cmd=$(command)"
     if args !== nothing
         uri *= "&args=$(args)"
     end
