@@ -1,4 +1,14 @@
 editor.action.goToLocations
+editor.action.rename
+editor.action.formatDocument
+editor.action.organizeImports
+editor.action.codeAction
+editor.action.quickFix
+editor.action.referenceSearch.trigger
+editor.action.goToImplementation
+editor.action.peekImplementation
+editor.action.goToTypeDefinition
+editor.action.showHover
 editor.debug.action.conditionalBreakpoint
 editor.debug.action.toggleBreakpoint
 editor.debug.action.toggleInlineBreakpoint
