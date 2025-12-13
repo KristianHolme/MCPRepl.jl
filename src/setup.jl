@@ -1,6 +1,23 @@
 using JSON
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+"""
+    get_effective_proxy_port(security_config) -> Int
+
+Get the effective proxy port from the security config.
+Returns 3000 (default proxy port) if the config port is 0 or not set.
+"""
+function get_effective_proxy_port(security_config)
+    if security_config === nothing || security_config.port == 0
+        return 3000  # Default proxy port
+    end
+    return security_config.port
+end
+
+# ============================================================================
 # IDE Detection
 # ============================================================================
 
@@ -763,121 +780,11 @@ function prompt_and_setup_vscode_extension()
     # Default to yes
     if isempty(response) || response == "y" || response == "yes"
         try
-            # Install the extension with Julia REPL commands allowed
-            # This will remove old versions first
+            # Install the extension with allowed commands from the shared template
+            # This ensures consistency between setup() and generate() flows
             install_vscode_remote_control(
                 pwd();
-                allowed_commands = [
-                    # REPL & Window Control
-                    "language-julia.startREPL",
-                    "workbench.action.reloadWindow",
-
-                    # File Operations
-                    "workbench.action.files.saveAll",
-                    "workbench.action.closeAllEditors",
-                    "workbench.action.files.openFile",
-                    "vscode.open",
-                    "vscode.openWith",
-
-                    # Navigation & Focus
-                    "workbench.action.terminal.focus",
-                    "workbench.action.focusActiveEditorGroup",
-                    "workbench.files.action.focusFilesExplorer",
-                    "workbench.action.quickOpen",
-                    "workbench.action.gotoLine",
-                    "workbench.action.navigateToLastEditLocation",
-                    "editor.action.goToLocations",
-                    "workbench.action.showAllSymbols",
-
-                    # LSP / Editor Actions (useful for code navigation, refactor, and formatting)
-                    "editor.action.rename",
-                    "editor.action.formatDocument",
-                    "editor.action.organizeImports",
-                    "editor.action.codeAction",
-                    "editor.action.quickFix",
-                    "editor.action.referenceSearch.trigger",
-                    "editor.action.goToImplementation",
-                    "editor.action.peekImplementation",
-                    "editor.action.goToTypeDefinition",
-                    "editor.action.showHover",
-
-                    # Terminal Operations
-                    "workbench.action.terminal.new",
-                    "workbench.action.terminal.sendSequence",
-                    "workbench.action.terminal.kill",
-
-                    # Testing - VS Code Test Explorer
-                    "testing.runAll",
-                    "testing.runCurrentFile",
-                    "testing.runAtCursor",
-                    "testing.reRunFailedTests",
-                    "testing.reRunLastRun",
-                    "testing.cancelRun",
-                    "testing.debugAll",
-                    "testing.debugCurrentFile",
-                    "testing.debugAtCursor",
-                    "testing.showMostRecentOutput",
-                    "testing.openOutputPeek",
-                    "testing.toggleTestingView",
-                    "workbench.view.testing.focus",
-
-                    # Testing & Debugging - Basic Controls
-                    "workbench.action.tasks.runTask",
-                    "workbench.action.debug.start",
-                    "workbench.action.debug.run",
-                    "workbench.action.debug.stop",
-                    "workbench.action.debug.restart",
-                    "workbench.action.debug.pause",
-                    "workbench.action.debug.continue",
-
-                    # Debugger - Stepping
-                    "workbench.action.debug.stepOver",
-                    "workbench.action.debug.stepInto",
-                    "workbench.action.debug.stepOut",
-                    "workbench.action.debug.stepBack",
-
-                    # Debugger - Breakpoints
-                    "editor.debug.action.toggleBreakpoint",
-                    "editor.debug.action.conditionalBreakpoint",
-                    "editor.debug.action.toggleInlineBreakpoint",
-                    "workbench.debug.viewlet.action.removeAllBreakpoints",
-                    "workbench.debug.viewlet.action.enableAllBreakpoints",
-                    "workbench.debug.viewlet.action.disableAllBreakpoints",
-
-                    # Debugger - Views & Panels
-                    "workbench.view.debug",
-                    "workbench.debug.action.focusVariablesView",
-                    "workbench.debug.action.focusWatchView",
-                    "workbench.debug.action.focusCallStackView",
-                    "workbench.debug.action.focusBreakpointsView",
-
-                    # Debugger - Watch & Variables
-                    "workbench.debug.viewlet.action.addFunctionBreakpoint",
-                    "workbench.action.debug.addWatch",
-                    "workbench.action.debug.removeWatch",
-                    "workbench.debug.action.copyValue",
-
-                    # Git Operations
-                    "git.commit",
-                    "git.refresh",
-                    "git.sync",
-                    "git.branchFrom",
-                    "git.pull",
-                    "git.push",
-                    "git.fetch",
-
-                    # Search & Replace
-                    "workbench.action.findInFiles",
-                    "workbench.action.replaceInFiles",
-
-                    # Window Management
-                    "workbench.action.splitEditor",
-                    "workbench.action.togglePanel",
-                    "workbench.action.toggleSidebarVisibility",
-
-                    # Extension Management
-                    "workbench.extensions.installExtension",
-                ],
+                allowed_commands = Generate.VSCODE_ALLOWED_COMMANDS,
                 require_confirmation = false,
             )
             ide_name = detect_ide() == :cursor ? "Cursor" : "VS Code"
@@ -1185,8 +1092,8 @@ function setup(; gentle::Bool = false)
     end
     println()
 
-    # Get port from security config (can be overridden by ENV var when server starts)
-    port = security_config.port
+    # Get effective proxy port (defaults to 3000 if not set)
+    port = get_effective_proxy_port(security_config)
 
     # Detect current IDE and check all client statuses
     current_ide = detect_ide()
@@ -1326,6 +1233,9 @@ function setup(; gentle::Bool = false)
             # Prompt for startup script
             prompt_and_setup_vscode_startup(gentle = gentle)
 
+            # Prompt for VS Code extension installation (needed for LSP tools)
+            prompt_and_setup_vscode_extension()
+
         else
             println("   ❌ Failed to configure Cursor stdio transport")
         end
@@ -1352,6 +1262,12 @@ function setup(; gentle::Bool = false)
             if add_cursor_mcp_server("http")
                 println("   ✅ Configured Cursor HTTP transport")
                 println("   ⚠️  If you see OAuth errors, use stdio instead: MCPRepl.setup() → [cst]")
+
+                # Prompt for startup script
+                prompt_and_setup_vscode_startup(gentle = gentle)
+
+                # Prompt for VS Code extension installation (needed for LSP tools)
+                prompt_and_setup_vscode_extension()
             else
                 println("   ❌ Failed to configure Cursor HTTP transport")
             end
