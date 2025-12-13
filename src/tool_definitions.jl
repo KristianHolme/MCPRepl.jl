@@ -1427,7 +1427,7 @@ Test results summary including:
     function (args)
         pattern = get(args, "pattern", ".*")
         coverage_enabled = get(args, "coverage", false)
-        verbose = parse(Int, get(args, "verbose", "1"))
+        verbose = Int(get(args, "verbose", 1))
 
         out_buf = IOBuffer()
         try
@@ -1444,7 +1444,10 @@ Test results summary including:
 
             try
                 if hasReTest
-                    ReTest.hijack(Pkg.project().name)
+                    project_name = Pkg.project().name
+                    if project_name !== nothing
+                        ReTest.hijack(project_name)
+                    end
                     output = retest(Regex(pattern); verbose = verbose)
                 else
                     output = Pkg.test(coverage = coverage_enabled)
