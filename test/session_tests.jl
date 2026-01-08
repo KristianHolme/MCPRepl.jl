@@ -42,6 +42,22 @@ using .Session: UNINITIALIZED, INITIALIZING, INITIALIZED, CLOSED
         @test result["serverInfo"]["name"] == "MCPRepl"
     end
 
+    @testset "Session Initialization - Newer Version" begin
+        session = MCPSession()
+        
+        # Test with a future version
+        params = Dict{String,Any}(
+            "protocolVersion" => "2099-01-01",
+            "capabilities" => Dict{String,Any}(),
+            "clientInfo" => Dict{String,Any}(),
+        )
+
+        initialize_session!(session, params)
+        @test session.state == INITIALIZED
+        # Should negotiate down to latest supported version
+        @test session.protocol_version == "2025-06-18" 
+    end
+
     @testset "Session Initialization - Unsupported Version" begin
         session = MCPSession()
 

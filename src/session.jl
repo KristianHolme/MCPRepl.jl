@@ -1,7 +1,7 @@
 # ============================================================================
 # Session Management Module
 # ============================================================================
-# 
+#
 # Implements MCP session lifecycle management according to the specification:
 # - Session initialization with protocol version negotiation
 # - Capability negotiation
@@ -47,13 +47,13 @@ mutable struct MCPSession
     id::String
     state::SessionState
     protocol_version::String
-    client_info::Dict{String,Any}
-    server_capabilities::Dict{String,Any}
-    client_capabilities::Dict{String,Any}
+    client_info::Dict{String, Any}
+    server_capabilities::Dict{String, Any}
+    client_capabilities::Dict{String, Any}
     created_at::DateTime
-    initialized_at::Union{DateTime,Nothing}
-    closed_at::Union{DateTime,Nothing}
-    target_repl_id::Union{String,Nothing}
+    initialized_at::Union{DateTime, Nothing}
+    closed_at::Union{DateTime, Nothing}
+    target_repl_id::Union{String, Nothing}
     last_activity::DateTime
 end
 
@@ -65,15 +65,15 @@ Create a new uninitialized MCP session.
 # Arguments
 - `target_repl_id::Union{String,Nothing}=nothing`: Optional target REPL ID for proxy routing
 """
-function MCPSession(; target_repl_id::Union{String,Nothing} = nothing)
+function MCPSession(; target_repl_id::Union{String, Nothing} = nothing)
     now_time = now()
     return MCPSession(
         string(uuid4()),                    # id
         UNINITIALIZED,                      # state
         "",                                 # protocol_version
-        Dict{String,Any}(),                 # client_info
+        Dict{String, Any}(),                 # client_info
         get_server_capabilities(),          # server_capabilities
-        Dict{String,Any}(),                 # client_capabilities
+        Dict{String, Any}(),                 # client_capabilities
         now_time,                           # created_at
         nothing,                            # initialized_at
         nothing,                            # closed_at
@@ -88,14 +88,14 @@ end
 Return the server's capabilities to advertise to clients.
 """
 function get_server_capabilities()
-    return Dict{String,Any}(
-        "tools" => Dict{String,Any}(
+    return Dict{String, Any}(
+        "tools" => Dict{String, Any}(
             "listChanged" => true,  # We support tools/list_changed notifications
         ),
-        "prompts" => Dict{String,Any}(),  # We support prompts
-        "resources" => Dict{String,Any}(),  # We support resources
-        "logging" => Dict{String,Any}(),  # We support logging
-        "experimental" => Dict{String,Any}(
+        "prompts" => Dict{String, Any}(),  # We support prompts
+        "resources" => Dict{String, Any}(),  # We support resources
+        "logging" => Dict{String, Any}(),  # We support logging
+        "experimental" => Dict{String, Any}(
             "vscode_integration" => true,  # Custom VS Code integration
             "supervisor_mode" => true,     # Multi-agent supervision
             "proxy_routing" => true,       # Proxy-based routing
@@ -134,38 +134,53 @@ function initialize_session!(session::MCPSession, params::Dict)
     session.state = INITIALIZING
 
     # Extract and validate protocol version
-    protocol_version = get(params, "protocolVersion", nothing)
-    if protocol_version === nothing
+    client_version = get(params, "protocolVersion", nothing)
+    if client_version === nothing
         session.state = UNINITIALIZED
         error("Missing required parameter: protocolVersion")
     end
 
-    # Validate protocol version (we support 2024-11-05 and 2025-06-18)
-    supported_versions = ["2024-11-05", "2025-06-18"]
-    if !(protocol_version in supported_versions)
+    # Server actually supports these versions (in order from oldest to newest)
+    # We negotiate down to the highest mutually supported version
+    server_supported_versions = ["2024-11-05", "2025-06-18"]
+    latest_supported = last(server_supported_versions)
+
+    # Version negotiation: find the highest version that both client and server support
+    # If client requests a newer version, negotiate down to the highest we support
+    # If client requests an older or equal version we support, use that
+    supported_version = nothing
+
+    if client_version in server_supported_versions
+        # Client requested a version we fully support
+        supported_version = client_version
+    elseif client_version > latest_supported
+        # Client requested newer version - negotiate down to highest we support
+        supported_version = latest_supported
+        @info "Protocol version negotiation" client_requested = client_version server_negotiated = supported_version
+    else
+        # Client requested an unsupported version
         session.state = UNINITIALIZED
         error(
-            "Unsupported protocol version: $protocol_version. Server supports: $(join(supported_versions, ", "))",
+            "Unsupported protocol version: $client_version. Server supports: $(join(server_supported_versions, ", "))",
         )
     end
-    supported_version = protocol_version  # Use the client's requested version
 
     # Store client capabilities
-    session.client_capabilities = get(params, "capabilities", Dict{String,Any}())
+    session.client_capabilities = get(params, "capabilities", Dict{String, Any}())
 
     # Store client info
-    session.client_info = get(params, "clientInfo", Dict{String,Any}())
+    session.client_info = get(params, "clientInfo", Dict{String, Any}())
 
     # Mark session as initialized
-    session.protocol_version = protocol_version
+    session.protocol_version = supported_version
     session.state = INITIALIZED
     session.initialized_at = now()
 
     # Return initialization response
-    return Dict{String,Any}(
+    return Dict{String, Any}(
         "protocolVersion" => supported_version,
         "capabilities" => session.server_capabilities,
-        "serverInfo" => Dict{String,Any}("name" => "MCPRepl", "version" => get_version()),
+        "serverInfo" => Dict{String, Any}("name" => "MCPRepl", "version" => get_version()),
     )
 end
 
@@ -182,7 +197,7 @@ function close_session!(session::MCPSession)
 
     session.state = CLOSED
     session.closed_at = now()
-    @info "Session closed" session_id = session.id duration =
+    return @info "Session closed" session_id = session.id duration =
         session.closed_at - session.created_at
 end
 
@@ -192,7 +207,7 @@ end
 Get information about the current session.
 """
 function get_session_info(session::MCPSession)
-    return Dict{String,Any}(
+    return Dict{String, Any}(
         "id" => session.id,
         "state" => string(session.state),
         "protocol_version" => session.protocol_version,
@@ -215,7 +230,7 @@ end
 Update the last activity timestamp for a session.
 """
 function update_activity!(session::MCPSession)
-    session.last_activity = now()
+    return session.last_activity = now()
 end
 
 """
