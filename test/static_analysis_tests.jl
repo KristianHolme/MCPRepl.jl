@@ -35,7 +35,8 @@ using JET
     @testset "Top-level Module Analysis" begin
         # Run JET analysis on the entire MCPRepl module
         # This catches undefined variables, type issues, etc.
-        rep = report_package("MCPRepl"; ignored_modules = (AnyFrameModule(Test),))
+        using MCPRepl
+        rep = report_package(MCPRepl; ignored_modules = (AnyFrameModule(Test),))
 
         # Filter out known acceptable issues
         issues = filter(rep.res.inference_error_reports) do report
