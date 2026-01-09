@@ -10,7 +10,6 @@ using SHA
 using Dates
 using Coverage
 using ReTest
-using CodeTracking
 using Pkg
 using Sockets
 
