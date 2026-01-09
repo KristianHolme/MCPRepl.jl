@@ -42,24 +42,24 @@ using JET
         issues = filter(rep.res.inference_error_reports) do report
             # Ignore errors from test files
             any(sf -> occursin("test/", string(sf.file)), report.vst) && return false
-            
+
             # Ignore common false positives or known issues to be fixed later
             msg = string(report)
-            
+
             # 1. Ignore "local variable conn is not defined" - likely scope/macro issue in proxy.jl
             occursin("local variable `conn` is not defined", msg) && return false
-            
+
             # 2. Ignore joinpath(::Nothing, ::String) - caused by optional paths
             occursin("joinpath(::Nothing, ::String)", msg) && return false
-            
+
             # 3. Ignore parse(::Type{Int64}, ::Nothing) - regex match result checking
             occursin("parse(::Type{Int64}, ::Nothing)", msg) && return false
-            
+
             # 4. Ignore other common union splitting errors in proxy.jl
             occursin("close(::Nothing)", msg) && return false
             occursin("kill(::Nothing)", msg) && return false
             occursin("process_running(::Nothing)", msg) && return false
-            
+
             return true
         end
 
@@ -93,7 +93,7 @@ using JET
         @testset "MCPServer Dependencies" begin
             # MCPServer is not a module, but a struct in MCPRepl
             @test isdefined(MCPRepl, :MCPServer)
-            
+
             # Check that Session module is available (included by MCPServer.jl)
             @test isdefined(MCPRepl, :Session)
             @test isdefined(MCPRepl.Session, :MCPSession)
