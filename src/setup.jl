@@ -412,7 +412,7 @@ function write_claude_config(config::Dict)
     end
 end
 
-function add_claude_mcp_server(; api_key::Union{String,Nothing} = nothing)
+function add_claude_mcp_server(; api_key::Union{String, Nothing} = nothing)
     # Load security config to get port and API key
     security_config = load_security_config()
 
@@ -563,7 +563,7 @@ function print_workspace_settings_warning()
     println("       folder or a .code-workspace file, move these settings to:")
     println("       • The .code-workspace file's \"settings\" section, or")
     println("       • Open this folder directly (not as a part of a workspace)")
-    println()
+    return println()
 end
 
 function get_startup_script_path()
@@ -978,7 +978,7 @@ function remove_gemini_mcp_server()
 end
 
 """
-    setup()
+    setup(; gentle::Bool=false, skip_animations::Bool=false)
 
 Interactive setup wizard for configuring MCP servers across different clients.
 
@@ -1020,7 +1020,7 @@ After configuring VS Code, reload the window (Cmd+Shift+P → "Reload Window")
 to apply changes. If you installed the startup script, restart your Julia REPL
 to see it in action.
 """
-function setup(; gentle::Bool = false)
+function setup(; gentle::Bool = false, skip_animations::Bool = false)
     # FIRST: Check security configuration
     security_config = load_security_config()
 
@@ -1058,7 +1058,11 @@ function setup(; gentle::Bool = false)
         response = strip(lowercase(readline()))
 
         if isempty(response) || response == "y" || response == "yes"
-            security_config = security_setup_wizard(pwd(); gentle = gentle)
+            security_config = security_setup_wizard(
+                pwd();
+                gentle = gentle,
+                skip_animations = skip_animations,
+            )
             println()
             printstyled("✅ Security configuration complete!\n", color = :green, bold = true)
             println()

@@ -1,4 +1,3 @@
-
 module MCPRepl
 
 using REPL
@@ -56,7 +55,7 @@ function find_free_port(start_port::Int = 40000, end_port::Int = 49999)
     last_error = nothing
     ports_tried = 0
 
-    for port = start_port:end_port
+    for port in start_port:end_port
         ports_tried += 1
         try
             # Try to bind to the port - if successful, it's available
@@ -182,20 +181,20 @@ include("Generate.jl")
 
 # Global dictionary to store VS Code command responses
 # Key: request_id (String), Value: (result, error, timestamp)
-const VSCODE_RESPONSES = Dict{String,Tuple{Any,Union{Nothing,String},Float64}}()
+const VSCODE_RESPONSES = Dict{String, Tuple{Any, Union{Nothing, String}, Float64}}()
 
 # Lock for thread-safe access to response dictionary
 const VSCODE_RESPONSE_LOCK = ReentrantLock()
 
 # Global dictionary to store single-use nonces for VS Code callbacks
 # Key: request_id (String), Value: (nonce, timestamp)
-const VSCODE_NONCES = Dict{String,Tuple{String,Float64}}()
+const VSCODE_NONCES = Dict{String, Tuple{String, Float64}}()
 
 # Lock for thread-safe access to nonces dictionary
 const VSCODE_NONCE_LOCK = ReentrantLock()
 
 # Global reference to supervisor registry (if supervisor mode is enabled)
-const SUPERVISOR_REGISTRY = Ref{Union{Supervisor.AgentRegistry,Nothing}}(nothing)
+const SUPERVISOR_REGISTRY = Ref{Union{Supervisor.AgentRegistry, Nothing}}(nothing)
 
 """
     store_vscode_response(request_id::String, result, error::Union{Nothing,String})
@@ -203,8 +202,8 @@ const SUPERVISOR_REGISTRY = Ref{Union{Supervisor.AgentRegistry,Nothing}}(nothing
 Store a response from VS Code for later retrieval.
 Thread-safe storage using VSCODE_RESPONSE_LOCK.
 """
-function store_vscode_response(request_id::String, result, error::Union{Nothing,String})
-    lock(VSCODE_RESPONSE_LOCK) do
+function store_vscode_response(request_id::String, result, error::Union{Nothing, String})
+    return lock(VSCODE_RESPONSE_LOCK) do
         VSCODE_RESPONSES[request_id] = (result, error, time())
     end
 end
@@ -217,10 +216,10 @@ Returns (result, error) tuple or throws TimeoutError.
 Automatically cleans up the stored response after retrieval.
 """
 function retrieve_vscode_response(
-    request_id::String;
-    timeout::Float64 = 5.0,
-    poll_interval::Float64 = 0.1,
-)
+        request_id::String;
+        timeout::Float64 = 5.0,
+        poll_interval::Float64 = 0.1,
+    )
     start_time = time()
 
     while (time() - start_time) < timeout
@@ -250,7 +249,7 @@ Should be called periodically.
 """
 function cleanup_old_vscode_responses(max_age::Float64 = 60.0)
     current_time = time()
-    lock(VSCODE_RESPONSE_LOCK) do
+    return lock(VSCODE_RESPONSE_LOCK) do
         for (request_id, (_, _, timestamp)) in collect(VSCODE_RESPONSES)
             if (current_time - timestamp) > max_age
                 delete!(VSCODE_RESPONSES, request_id)
@@ -279,7 +278,7 @@ end
 Store a nonce for a specific request ID. Thread-safe.
 """
 function store_nonce(request_id::String, nonce::String)
-    lock(VSCODE_NONCE_LOCK) do
+    return lock(VSCODE_NONCE_LOCK) do
         VSCODE_NONCES[request_id] = (nonce, time())
     end
 end
@@ -291,7 +290,7 @@ Validate that a nonce matches the stored nonce for a request ID, then consume it
 Returns true if valid, false otherwise. Thread-safe.
 """
 function validate_and_consume_nonce(request_id::String, nonce::String)::Bool
-    lock(VSCODE_NONCE_LOCK) do
+    return lock(VSCODE_NONCE_LOCK) do
         stored = get(VSCODE_NONCES, request_id, nothing)
         if stored === nothing
             return false
@@ -313,7 +312,7 @@ Should be called periodically.
 """
 function cleanup_old_nonces(max_age::Float64 = 60.0)
     current_time = time()
-    lock(VSCODE_NONCE_LOCK) do
+    return lock(VSCODE_NONCE_LOCK) do
         for (request_id, (_, timestamp)) in collect(VSCODE_NONCES)
             if (current_time - timestamp) > max_age
                 delete!(VSCODE_NONCES, request_id)
@@ -337,7 +336,7 @@ end
 
 # Helper function to trigger IDE commands via URI
 function trigger_vscode_uri(uri::String)
-    if Sys.isapple()
+    return if Sys.isapple()
         run(`open $uri`)
     elseif Sys.islinux()
         run(`xdg-open $uri`)
@@ -350,14 +349,14 @@ end
 
 # Helper function to build IDE command URI (works for both VS Code and Cursor)
 function build_vscode_uri(
-    command::String;
-    args::Union{Nothing,String} = nothing,
-    request_id::Union{Nothing,String} = nothing,
-    mcp_port::Int = 3000,
-    nonce::Union{Nothing,String} = nothing,
-    publisher::String = "MCPRepl",
-    name::String = "vscode-remote-control",
-)
+        command::String;
+        args::Union{Nothing, String} = nothing,
+        request_id::Union{Nothing, String} = nothing,
+        mcp_port::Int = 3000,
+        nonce::Union{Nothing, String} = nothing,
+        publisher::String = "MCPRepl",
+        name::String = "vscode-remote-control",
+    )
     # Use cursor:// or vscode:// based on detected IDE
     scheme = get_ide_uri_scheme()
     uri = "$(scheme)://$(publisher).$(name)?cmd=$(command)"
@@ -412,12 +411,12 @@ function remove_println_calls(expr, toplevel::Bool = true)
             end
             # Match qualified calls (Base.println, Main.print, etc.)
             if (
-                func isa Expr &&
-                func.head == :. &&
-                length(func.args) >= 2 &&
-                func.args[end] isa QuoteNode &&
-                func.args[end].value in print_funcs
-            )
+                    func isa Expr &&
+                        func.head == :. &&
+                        length(func.args) >= 2 &&
+                        func.args[end] isa QuoteNode &&
+                        func.args[end].value in print_funcs
+                )
                 return nothing
             end
         elseif expr.head == :macrocall
@@ -435,12 +434,12 @@ function remove_println_calls(expr, toplevel::Bool = true)
                 end
                 # Also handle qualified logging macros
                 if (
-                    macro_name isa Expr &&
-                    macro_name.head == :. &&
-                    length(macro_name.args) >= 2 &&
-                    macro_name.args[end] isa QuoteNode &&
-                    macro_name.args[end].value in [:error, :debug, :info, :warn]
-                )
+                        macro_name isa Expr &&
+                            macro_name.head == :. &&
+                            length(macro_name.args) >= 2 &&
+                            macro_name.args[end] isa QuoteNode &&
+                            macro_name.args[end].value in [:error, :debug, :info, :warn]
+                    )
                     return nothing
                 end
             end
@@ -468,11 +467,11 @@ function remove_println_calls(expr, toplevel::Bool = true)
 end
 
 function execute_repllike(
-    str;
-    silent::Bool = false,
-    quiet::Bool = true,
-    description::Union{String,Nothing} = nothing,
-)
+        str;
+        silent::Bool = false,
+        quiet::Bool = true,
+        description::Union{String, Nothing} = nothing,
+    )
     # Check for Pkg.activate usage
     if contains(str, "activate(") && !contains(str, r"#.*overwrite no-activate-rule")
         return """
@@ -638,8 +637,8 @@ function execute_repllike(
     end
 end
 
-SERVER = Ref{Union{Nothing,MCPServer}}(nothing)
-ALL_TOOLS = Ref{Union{Nothing,Vector{MCPTool}}}(nothing)
+SERVER = Ref{Union{Nothing, MCPServer}}(nothing)
+ALL_TOOLS = Ref{Union{Nothing, Vector{MCPTool}}}(nothing)
 
 # ============================================================================
 # Tool Configuration Management
@@ -658,9 +657,9 @@ The configuration supports:
 If the config file doesn't exist, returns `nothing` to indicate all tools should be enabled.
 """
 function load_tools_config(
-    config_path::String = ".mcprepl/tools.json",
-    workspace_dir::String = pwd(),
-)
+        config_path::String = ".mcprepl/tools.json",
+        workspace_dir::String = pwd(),
+    )
     full_path = joinpath(workspace_dir, config_path)
 
     # If config doesn't exist, enable all tools (backward compatibility)
@@ -669,7 +668,7 @@ function load_tools_config(
     end
 
     try
-        config = JSON.parsefile(full_path; dicttype = Dict{String,Any})
+        config = JSON.parsefile(full_path; dicttype = Dict{String, Any})
         enabled_tools = Set{Symbol}()
 
         # First, process tool sets
@@ -712,7 +711,7 @@ end
 Filter tools from ALL_TOOLS based on the enabled tools set.
 If enabled_tools is `nothing`, returns all tools (backward compatibility).
 """
-function filter_tools_by_config(enabled_tools::Union{Set{Symbol},Nothing})
+function filter_tools_by_config(enabled_tools::Union{Set{Symbol}, Nothing})
     if enabled_tools === nothing
         return ALL_TOOLS[]
     end
@@ -739,7 +738,7 @@ function start_session_heartbeat(agent_name::String, agents_config::String, verb
     end
 
     # Spawn heartbeat task on a separate thread
-    Threads.@spawn begin
+    return Threads.@spawn begin
         # Read supervisor configuration
         config_path = agents_config  # Already includes .mcprepl/ prefix
         supervisor_port = nothing
@@ -834,14 +833,14 @@ MCPRepl.start!(agent_name="data-processor")
 ```
 """
 function start!(;
-    port::Union{Int,Nothing} = nothing,
-    verbose::Bool = true,
-    security_mode::Union{Symbol,Nothing} = nothing,
-    supervisor::Bool = false,
-    agents_config::String = ".mcprepl/agents.json",
-    agent_name::String = "",
-    workspace_dir::String = pwd(),
-)
+        port::Union{Int, Nothing} = nothing,
+        verbose::Bool = true,
+        security_mode::Union{Symbol, Nothing} = nothing,
+        supervisor::Bool = false,
+        agents_config::String = ".mcprepl/agents.json",
+        agent_name::String = "",
+        workspace_dir::String = pwd(),
+    )
     SERVER[] !== nothing && stop!() # Stop existing server if running
 
     # Check for persistent proxy server
@@ -919,7 +918,7 @@ function start!(;
         else
             @debug "Using port from loaded config" port = config_port mode = (
                 supervisor ? "supervisor" :
-                (agent_name != "" ? "agent:$agent_name" : "normal")
+                    (agent_name != "" ? "agent:$agent_name" : "normal")
             )
             config_port
         end
@@ -1042,74 +1041,74 @@ function start!(;
 
     usage_instructions_tool =
         @mcp_tool :usage_instructions "Get Julia REPL usage instructions and best practices for AI agents." Dict(
-            "type" => "object",
-            "properties" => Dict(),
-            "required" => [],
-        ) (
-            args -> begin
-                try
-                    workflow_path = joinpath(
-                        dirname(dirname(@__FILE__)),
-                        "prompts",
-                        "julia_repl_workflow.md",
-                    )
+        "type" => "object",
+        "properties" => Dict(),
+        "required" => [],
+    ) (
+        args -> begin
+            try
+                workflow_path = joinpath(
+                    dirname(dirname(@__FILE__)),
+                    "prompts",
+                    "julia_repl_workflow.md",
+                )
 
-                    if !isfile(workflow_path)
-                        return "Error: julia_repl_workflow.md not found at $workflow_path"
-                    end
-
-                    return read(workflow_path, String)
-                catch e
-                    return "Error reading usage instructions: $e"
+                if !isfile(workflow_path)
+                    return "Error: julia_repl_workflow.md not found at $workflow_path"
                 end
+
+                return read(workflow_path, String)
+            catch e
+                return "Error reading usage instructions: $e"
             end
-        )
+        end
+    )
 
     usage_quiz_tool = @mcp_tool(
         :usage_quiz,
         """Test your understanding of MCPRepl usage patterns with a self-graded quiz.
 
-This tool helps AI agents verify they understand the correct usage patterns for the `ex` tool
-and the shared REPL model before working with users.
+        This tool helps AI agents verify they understand the correct usage patterns for the `ex` tool
+        and the shared REPL model before working with users.
 
-# Modes
+        # Modes
 
-**Default (no arguments):** Returns quiz questions
-- 6 questions testing understanding of:
-  - Shared REPL model
-  - When to use q=false vs q=true (default)
-  - Communication channels (TEXT vs code vs println)
-  - Token efficiency
-  - Real-world scenarios
-- Agent should answer questions and output responses to user
+        **Default (no arguments):** Returns quiz questions
+        - 6 questions testing understanding of:
+          - Shared REPL model
+          - When to use q=false vs q=true (default)
+          - Communication channels (TEXT vs code vs println)
+          - Token efficiency
+          - Real-world scenarios
+        - Agent should answer questions and output responses to user
 
-**With show_sols=true:** Returns solutions and grading instructions
-- Canonical answers for all questions
-- Point values and grading rubrics
-- Instructions to self-grade and report score to user
-- If score < 75, agent must review usage_instructions and retake
+        **With show_sols=true:** Returns solutions and grading instructions
+        - Canonical answers for all questions
+        - Point values and grading rubrics
+        - Instructions to self-grade and report score to user
+        - If score < 75, agent must review usage_instructions and retake
 
-# Usage
+        # Usage
 
-```julia
-# Take the quiz
-usage_quiz()
-# [Agent answers questions in their response to user]
+        ```julia
+        # Take the quiz
+        usage_quiz()
+        # [Agent answers questions in their response to user]
 
-# Check answers and grade yourself
-usage_quiz(show_sols=true)
-# [Agent compares answers, calculates score, reports to user]
-```
+        # Check answers and grade yourself
+        usage_quiz(show_sols=true)
+        # [Agent compares answers, calculates score, reports to user]
+        ```
 
-# Purpose
+        # Purpose
 
-Ensures agents understand:
-- NOT to use println for communication (user sees REPL output directly)
-- Default to q=true (quiet mode) - only use q=false when you need return values for decisions
-- Token efficiency (70-90% savings with correct usage)
-- Communication happens in TEXT responses, not code
+        Ensures agents understand:
+        - NOT to use println for communication (user sees REPL output directly)
+        - Default to q=true (quiet mode) - only use q=false when you need return values for decisions
+        - Token efficiency (70-90% savings with correct usage)
+        - Communication happens in TEXT responses, not code
 
-**Recommended:** New agents should take this quiz before starting work to verify understanding.""",
+        **Recommended:** New agents should take this quiz before starting work to verify understanding.""",
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -1148,10 +1147,10 @@ Ensures agents understand:
         :ex,
         """Execute Julia code in a persistent REPL. User sees all code execute in real-time.
 
-Default (q=true): Returns only printed output/errors, suppresses return values (saves 70-90% tokens).
-Verbose (q=false): Returns full output including return value - use ONLY when you need the result to make a decision.
+        Default (q=true): Returns only printed output/errors, suppresses return values (saves 70-90% tokens).
+        Verbose (q=false): Returns full output including return value - use ONLY when you need the result to make a decision.
 
-Never use `julia` in bash. Call usage_instructions first for workflow guidance.""",
+        Never use `julia` in bash. Call usage_instructions first for workflow guidance.""",
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -1224,14 +1223,14 @@ Never use `julia` in bash. Call usage_instructions first for workflow guidance."
 
                     return """✓ Julia REPL restart initiated$port_msg.
 
-⏳ The MCP server will be temporarily offline during restart.
+                    ⏳ The MCP server will be temporarily offline during restart.
 
-**AI Agent Instructions:**
-1. Wait 5 seconds before making any requests
-2. Then retry every 2 seconds until connection is reestablished
-3. Typical restart time: 5-10 seconds (may be longer if packages need recompilation)
+                    **AI Agent Instructions:**
+                    1. Wait 5 seconds before making any requests
+                    2. Then retry every 2 seconds until connection is reestablished
+                    3. Typical restart time: 5-10 seconds (may be longer if packages need recompilation)
 
-The server will automatically restart and be ready when the Julia REPL finishes loading."""
+                    The server will automatically restart and be ready when the Julia REPL finishes loading."""
                 else
                     # Not in VS Code - use exit() approach
                     # Schedule exit after a brief delay to allow response to be sent
@@ -1242,15 +1241,15 @@ The server will automatically restart and be ready when the Julia REPL finishes 
 
                     return """✓ Julia REPL restart initiated$port_msg.
 
-⏳ The MCP server will be temporarily offline during restart.
+                    ⏳ The MCP server will be temporarily offline during restart.
 
-**AI Agent Instructions:**
-1. Wait 5 seconds before making any requests
-2. Then retry every 2 seconds until connection is reestablished
-3. Typical restart time: 5-10 seconds (may be longer if packages need recompilation)
+                    **AI Agent Instructions:**
+                    1. Wait 5 seconds before making any requests
+                    2. Then retry every 2 seconds until connection is reestablished
+                    3. Typical restart time: 5-10 seconds (may be longer if packages need recompilation)
 
-**Note:** Running outside VS Code - Julia will exit and needs to be manually restarted.
-If Julia is started via the .julia-startup.jl script, it should restart automatically."""
+                    **Note:** Running outside VS Code - Julia will exit and needs to be manually restarted.
+                    If Julia is started via the .julia-startup.jl script, it should restart automatically."""
                 end
             catch e
                 return "Error initiating REPL restart: $e"
@@ -1262,44 +1261,44 @@ If Julia is started via the .julia-startup.jl script, it should restart automati
         :execute_vscode_command,
         """Execute any VS Code command via the Remote Control extension.
 
-This tool can trigger any VS Code command that has been allowlisted in the extension configuration.
-Useful for automating editor operations like saving files, running tasks, managing windows, etc.
+        This tool can trigger any VS Code command that has been allowlisted in the extension configuration.
+        Useful for automating editor operations like saving files, running tasks, managing windows, etc.
 
-**Prerequisites:**
-- VS Code Remote Control extension must be installed (via MCPRepl.setup())
-- The command must be in the allowed commands list (see usage_instructions tool for complete list)
+        **Prerequisites:**
+        - VS Code Remote Control extension must be installed (via MCPRepl.setup())
+        - The command must be in the allowed commands list (see usage_instructions tool for complete list)
 
-**Bidirectional Communication:**
-- Set `wait_for_response=true` to wait for and return the command's result
-- Useful for commands that return values (e.g., getting debug variable values)
-- Default timeout is 5 seconds (configurable via `timeout` parameter)
+        **Bidirectional Communication:**
+        - Set `wait_for_response=true` to wait for and return the command's result
+        - Useful for commands that return values (e.g., getting debug variable values)
+        - Default timeout is 5 seconds (configurable via `timeout` parameter)
 
-**Common Command Categories:**
-- REPL & Window Control: restartREPL, startREPL, reloadWindow
-- File Operations: saveAll, closeAllEditors, openFile
-- Navigation: terminal.focus, focusActiveEditorGroup, focusFilesExplorer, quickOpen
-- Terminal Operations: sendSequence (execute shell commands without approval dialogs)
-- Testing & Debugging: tasks.runTask, debug.start, debug.stop
-- Git: git.commit, git.refresh, git.sync
-- Search: findInFiles, replaceInFiles
-- Window Management: splitEditor, togglePanel, toggleSidebarVisibility
-- Extensions: installExtension
+        **Common Command Categories:**
+        - REPL & Window Control: restartREPL, startREPL, reloadWindow
+        - File Operations: saveAll, closeAllEditors, openFile
+        - Navigation: terminal.focus, focusActiveEditorGroup, focusFilesExplorer, quickOpen
+        - Terminal Operations: sendSequence (execute shell commands without approval dialogs)
+        - Testing & Debugging: tasks.runTask, debug.start, debug.stop
+        - Git: git.commit, git.refresh, git.sync
+        - Search: findInFiles, replaceInFiles
+        - Window Management: splitEditor, togglePanel, toggleSidebarVisibility
+        - Extensions: installExtension
 
-**Examples:**
-```
-execute_vscode_command("workbench.action.files.saveAll")
-execute_vscode_command("workbench.action.terminal.focus")
-execute_vscode_command("workbench.action.tasks.runTask", ["test"])
+        **Examples:**
+        ```
+        execute_vscode_command("workbench.action.files.saveAll")
+        execute_vscode_command("workbench.action.terminal.focus")
+        execute_vscode_command("workbench.action.tasks.runTask", ["test"])
 
-# Execute shell commands (RECOMMENDED for julia --project commands):
-execute_vscode_command("workbench.action.terminal.sendSequence",
-  ["{\"text\": \"julia --project -e 'using Pkg; Pkg.test()'\\r\"}"])
+        # Execute shell commands (RECOMMENDED for julia --project commands):
+        execute_vscode_command("workbench.action.terminal.sendSequence",
+          ["{\"text\": \"julia --project -e 'using Pkg; Pkg.test()'\\r\"}"])
 
-# Get a value back from VS Code:
-execute_vscode_command("someCommand", wait_for_response=true, timeout=10.0)
-```
+        # Get a value back from VS Code:
+        execute_vscode_command("someCommand", wait_for_response=true, timeout=10.0)
+        ```
 
-For the complete list of available commands and their descriptions, call the usage_instructions tool.""",
+        For the complete list of available commands and their descriptions, call the usage_instructions tool.""",
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -1387,8 +1386,8 @@ For the complete list of available commands and their descriptions, call the usa
         :list_vscode_commands,
         """List all VS Code commands that are allowed for execution.
 
-Returns the list of commands configured in `.vscode/settings.json` under `vscode-remote-control.allowedCommands`.
-Use this to discover which commands are available for the `execute_vscode_command` tool.""",
+        Returns the list of commands configured in `.vscode/settings.json` under `vscode-remote-control.allowedCommands`.
+        Use this to discover which commands are available for the `execute_vscode_command` tool.""",
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         args -> begin
             try
@@ -1956,17 +1955,17 @@ Use this to discover which commands are available for the `execute_vscode_comman
         :open_file_and_set_breakpoint,
         """Open a file in VS Code and set a breakpoint at a specific line.
 
-This is a convenience tool that combines file opening and breakpoint setting
-into a single operation, making it easier to set up debugging.
+        This is a convenience tool that combines file opening and breakpoint setting
+        into a single operation, making it easier to set up debugging.
 
-# Arguments
-- `file_path`: Absolute path to the file to open
-- `line`: Line number to set the breakpoint (optional, defaults to current cursor position)
+        # Arguments
+        - `file_path`: Absolute path to the file to open
+        - `line`: Line number to set the breakpoint (optional, defaults to current cursor position)
 
-# Examples
-- Open file and set breakpoint at line 42: `{"file_path": "/path/to/file.jl", "line": 42}`
-- Open file (breakpoint at cursor): `{"file_path": "/path/to/file.jl"}`
-""",
+        # Examples
+        - Open file and set breakpoint at line 42: `{"file_path": "/path/to/file.jl", "line": 42}`
+        - Open file (breakpoint at cursor): `{"file_path": "/path/to/file.jl"}`
+        """,
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -2035,12 +2034,12 @@ into a single operation, making it easier to set up debugging.
         :start_debug_session,
         """Start a debugging session in VS Code.
 
-Opens the debug view and starts debugging with the current configuration.
-Useful after setting breakpoints to begin stepping through code.
+        Opens the debug view and starts debugging with the current configuration.
+        Useful after setting breakpoints to begin stepping through code.
 
-# Examples
-- Start debugging: `{}`
-""",
+        # Examples
+        - Start debugging: `{}`
+        """,
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         function (args)
             try
@@ -2065,17 +2064,17 @@ Useful after setting breakpoints to begin stepping through code.
         :add_watch_expression,
         """Add a watch expression to monitor during debugging.
 
-Watch expressions let you monitor the value of variables or expressions
-as you step through code during debugging.
+        Watch expressions let you monitor the value of variables or expressions
+        as you step through code during debugging.
 
-# Arguments
-- `expression`: The Julia expression to watch (e.g., "x", "length(arr)", "myvar > 10")
+        # Arguments
+        - `expression`: The Julia expression to watch (e.g., "x", "length(arr)", "myvar > 10")
 
-# Examples
-- Watch a variable: `{"expression": "x"}`
-- Watch an expression: `{"expression": "length(my_array)"}`
-- Watch a condition: `{"expression": "counter > 100"}`
-""",
+        # Examples
+        - Watch a variable: `{"expression": "x"}`
+        - Watch an expression: `{"expression": "length(my_array)"}`
+        - Watch a condition: `{"expression": "counter > 100"}`
+        """,
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -2115,31 +2114,31 @@ as you step through code during debugging.
         :copy_debug_value,
         """Copy the value of a variable or expression during debugging to the clipboard.
 
-This tool allows AI agents to inspect variable values during a debug session.
-The value is copied to the clipboard and can then be read using shell commands.
+        This tool allows AI agents to inspect variable values during a debug session.
+        The value is copied to the clipboard and can then be read using shell commands.
 
-**Prerequisites:**
-- Must be in an active debug session (paused at a breakpoint)
-- The variable/expression must be selected or focused in the debug view
+        **Prerequisites:**
+        - Must be in an active debug session (paused at a breakpoint)
+        - The variable/expression must be selected or focused in the debug view
 
-**Workflow:**
-1. Focus the appropriate debug view (Variables or Watch)
-2. The user or AI should have the variable selected/focused
-3. Copy the value to clipboard
-4. Read clipboard contents to get the value
+        **Workflow:**
+        1. Focus the appropriate debug view (Variables or Watch)
+        2. The user or AI should have the variable selected/focused
+        3. Copy the value to clipboard
+        4. Read clipboard contents to get the value
 
-# Arguments
-- `view`: Which debug view to focus - "variables" or "watch" (default: "variables")
+        # Arguments
+        - `view`: Which debug view to focus - "variables" or "watch" (default: "variables")
 
-# Examples
-- Copy from variables view: `{"view": "variables"}`
-- Copy from watch view: `{"view": "watch"}`
+        # Examples
+        - Copy from variables view: `{"view": "variables"}`
+        - Copy from watch view: `{"view": "watch"}`
 
-**Note:** After copying, use a shell command to read the clipboard:
-- macOS: `pbpaste`
-- Linux: `xclip -selection clipboard -o` or `xsel --clipboard --output`
-- Windows: `powershell Get-Clipboard`
-""",
+        **Note:** After copying, use a shell command to read the clipboard:
+        - macOS: `pbpaste`
+        - Linux: `xclip -selection clipboard -o` or `xsel --clipboard --output`
+        - Windows: `powershell Get-Clipboard`
+        """,
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -2182,8 +2181,8 @@ The value is copied to the clipboard and can then be read using shell commands.
                 end
 
                 return """Value copied to clipboard from $(view) view.
-To read the value, run in terminal: $clipboard_cmd
-Note: Make sure a variable is selected/focused in the debug view before copying."""
+                To read the value, run in terminal: $clipboard_cmd
+                Note: Make sure a variable is selected/focused in the debug view before copying."""
             catch e
                 return "Error copying debug value: $e"
             end
@@ -2195,13 +2194,13 @@ Note: Make sure a variable is selected/focused in the debug view before copying.
         :debug_step_over,
         """Step over the current line in the debugger.
 
-Executes the current line and moves to the next line without entering function calls.
-Must be in an active debug session (paused at a breakpoint).
+        Executes the current line and moves to the next line without entering function calls.
+        Must be in an active debug session (paused at a breakpoint).
 
-# Examples
-- `debug_step_over()`
-- `debug_step_over(wait_for_response=true)` - Wait for confirmation
-""",
+        # Examples
+        - `debug_step_over()`
+        - `debug_step_over(wait_for_response=true)` - Wait for confirmation
+        """,
         Dict(
             "type" => "object",
             "properties" => Dict(
@@ -2220,7 +2219,7 @@ Must be in an active debug session (paused at a breakpoint).
                 if wait_response
                     result = execute_repllike(
                         """execute_vscode_command("workbench.action.debug.stepOver",
-                                                  wait_for_response=true, timeout=10.0)""";
+                        wait_for_response=true, timeout=10.0)""";
                         silent = false,
                         quiet = false,
                     )
@@ -2239,12 +2238,12 @@ Must be in an active debug session (paused at a breakpoint).
         :debug_step_into,
         """Step into a function call in the debugger.
 
-Enters the function on the current line to debug its internals.
-Must be in an active debug session (paused at a breakpoint).
+        Enters the function on the current line to debug its internals.
+        Must be in an active debug session (paused at a breakpoint).
 
-# Examples
-- `debug_step_into()`
-""",
+        # Examples
+        - `debug_step_into()`
+        """,
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         function (args)
             try
@@ -2260,12 +2259,12 @@ Must be in an active debug session (paused at a breakpoint).
         :debug_step_out,
         """Step out of the current function in the debugger.
 
-Continues execution until the current function returns to its caller.
-Must be in an active debug session (paused at a breakpoint).
+        Continues execution until the current function returns to its caller.
+        Must be in an active debug session (paused at a breakpoint).
 
-# Examples
-- `debug_step_out()`
-""",
+        # Examples
+        - `debug_step_out()`
+        """,
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         function (args)
             try
@@ -2281,12 +2280,12 @@ Must be in an active debug session (paused at a breakpoint).
         :debug_continue,
         """Continue execution in the debugger.
 
-Resumes execution until the next breakpoint or program completion.
-Must be in an active debug session (paused at a breakpoint).
+        Resumes execution until the next breakpoint or program completion.
+        Must be in an active debug session (paused at a breakpoint).
 
-# Examples
-- `debug_continue()`
-""",
+        # Examples
+        - `debug_continue()`
+        """,
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         function (args)
             try
@@ -2302,11 +2301,11 @@ Must be in an active debug session (paused at a breakpoint).
         :debug_stop,
         """Stop the current debug session.
 
-Terminates the active debug session and returns to normal execution.
+        Terminates the active debug session and returns to normal execution.
 
-# Examples
-- `debug_stop()`
-""",
+        # Examples
+        - `debug_stop()`
+        """,
         Dict("type" => "object", "properties" => Dict(), "required" => []),
         function (args)
             try
@@ -2739,19 +2738,19 @@ Terminates the active debug session and returns to normal execution.
     else
         atreplinit(set_prefix!)
     end
-    nothing
+    return nothing
 end
 
 function set_prefix!(repl)
     mode = get_mainmode(repl)
-    mode.prompt = REPL.contextual_prompt(repl, "✻ julia> ")
+    return mode.prompt = REPL.contextual_prompt(repl, "✻ julia> ")
 end
 function unset_prefix!(repl)
     mode = get_mainmode(repl)
-    mode.prompt = REPL.contextual_prompt(repl, REPL.JULIA_PROMPT)
+    return mode.prompt = REPL.contextual_prompt(repl, REPL.JULIA_PROMPT)
 end
 function get_mainmode(repl)
-    only(
+    return only(
         filter(repl.interface.modes) do mode
             mode isa REPL.Prompt &&
                 mode.prompt isa Function &&
@@ -2773,7 +2772,7 @@ function stop!()
     end
 
     # Stop supervisor if running
-    if SUPERVISOR_REGISTRY[] !== nothing
+    return if SUPERVISOR_REGISTRY[] !== nothing
         println("Stopping supervisor...")
         Supervisor.stop_supervisor(SUPERVISOR_REGISTRY[]; stop_agents = true)
         SUPERVISOR_REGISTRY[] = nothing
@@ -2803,18 +2802,18 @@ end
 ```
 """
 function test_server(
-    port::Int = 3000;
-    host = "127.0.0.1",
-    max_attempts::Int = 3,
-    delay::Float64 = 0.5,
-)
-    for attempt = 1:max_attempts
+        port::Int = 3000;
+        host = "127.0.0.1",
+        max_attempts::Int = 3,
+        delay::Float64 = 0.5,
+    )
+    for attempt in 1:max_attempts
         try
             # Use HTTP.jl for a clean, proper request
             body = """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"exec_repl","arguments":{"expression":"println(\\\"🎉 MCP Server ready!\\\")","silent":true}}}"""
 
             # Build headers with security if configured
-            headers = Dict{String,String}("Content-Type" => "application/json")
+            headers = Dict{String, String}("Content-Type" => "application/json")
 
             # Prefer explicit env var when present
             env_key = get(ENV, "JULIA_MCP_API_KEY", "")
@@ -2882,16 +2881,25 @@ function security_status()
         println()
         return
     end
-    show_security_status(config)
+    return show_security_status(config)
 end
 
 """
-    setup_security(; force::Bool=false)
+    setup_security(; force::Bool=false, gentle::Bool=false, skip_animations::Bool=false)
 
 Launch the security setup wizard.
 """
-function setup_security(; force::Bool = false, gentle::Bool = false)
-    return security_setup_wizard(pwd(); force = force, gentle = gentle)
+function setup_security(;
+        force::Bool = false,
+        gentle::Bool = false,
+        skip_animations::Bool = false,
+    )
+    return security_setup_wizard(
+        pwd();
+        force = force,
+        gentle = gentle,
+        skip_animations = skip_animations,
+    )
 end
 
 """
@@ -2984,7 +2992,7 @@ function call_tool(tool_id::Symbol, args::Dict)
         result = try
             tool.handler(args)
         catch e
-            if e isa MethodError && hasmethod(tool.handler, Tuple{typeof(args),typeof(nothing)})
+            if e isa MethodError && hasmethod(tool.handler, Tuple{typeof(args), typeof(nothing)})
                 # Handler supports streaming, call with both parameters
                 tool.handler(args, nothing)
             else
@@ -3005,7 +3013,7 @@ function call_tool(tool_name::String, args::Dict)
     return call_tool(tool_id, args)
 end
 
-function call_tool(tool_id::Symbol, args::Pair{Symbol,String}...)
+function call_tool(tool_id::Symbol, args::Pair{Symbol, String}...)
     return call_tool(tool_id, Dict([String(k) => v for (k, v) in args]))
 end
 
@@ -3022,7 +3030,7 @@ function list_tools()
     end
 
     server = SERVER[]
-    tools_info = Dict{Symbol,String}()
+    tools_info = Dict{Symbol, String}()
 
     for (id, tool) in server.tools
         tools_info[id] = tool.description
@@ -3086,10 +3094,10 @@ function tool_help(tool_id::Symbol; extended::Bool = false)
 end
 
 function restart()
-    call_tool(:manage_repl, Dict("command" => "restart"))
+    return call_tool(:manage_repl, Dict("command" => "restart"))
 end
 function shutdown()
-    call_tool(:manage_repl, Dict("command" => "shutdown"))
+    return call_tool(:manage_repl, Dict("command" => "shutdown"))
 end
 
 """
