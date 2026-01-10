@@ -14,19 +14,19 @@ import ..MCPRepl:
 mutable struct MCPServer
     port::Int
     server::HTTP.Server
-    tools::Dict{Symbol,MCPTool}           # Symbol-keyed registry
-    name_to_id::Dict{String,Symbol}       # String→Symbol lookup for JSON-RPC
-    session::Union{MCPSession,Nothing}    # MCP session (one per server)
+    tools::Dict{Symbol, MCPTool}           # Symbol-keyed registry
+    name_to_id::Dict{String, Symbol}       # String→Symbol lookup for JSON-RPC
+    session::Union{MCPSession, Nothing}    # MCP session (one per server)
 end
 
 # Create request handler with access to tools and session
 function create_handler(
-    tools::Dict{Symbol,MCPTool},
-    name_to_id::Dict{String,Symbol},
-    port::Int,
-    security_config::Union{SecurityConfig,Nothing} = nothing,
-    session::Union{MCPSession,Nothing} = nothing,
-)
+        tools::Dict{Symbol, MCPTool},
+        name_to_id::Dict{String, Symbol},
+        port::Int,
+        security_config::Union{SecurityConfig, Nothing} = nothing,
+        session::Union{MCPSession, Nothing} = nothing,
+    )
     return function handle_request(req::HTTP.Request)
         # Security check - apply to ALL endpoints including vscode-response
         nonce_validated = false  # Track if nonce auth succeeded
@@ -41,7 +41,7 @@ function create_handler(
                 body = String(req.body)
                 request_id = nothing
                 try
-                    response_data = JSON.parse(body; dicttype = Dict{String,Any})
+                    response_data = JSON.parse(body; dicttype = Dict{String, Any})
                     request_id = get(response_data, "request_id", nothing)
                 catch e
                     # Will fail validation below if can't parse
@@ -143,7 +143,7 @@ function create_handler(
             # Handle VS Code response endpoint (for bidirectional communication)
             if req.target == "/vscode-response" && req.method == "POST"
                 try
-                    response_data = JSON.parse(body; dicttype = Dict{String,Any})
+                    response_data = JSON.parse(body; dicttype = Dict{String, Any})
                     request_id = get(response_data, "request_id", nothing)
 
                     if request_id === nothing
@@ -177,9 +177,9 @@ function create_handler(
             # Handle AGENTS.md well-known documentation (before JSON parsing)
             # Serve AGENTS.md from project root if it exists
             if req.target == "/.well-known/agents.md" ||
-               req.target == "/agents.md" ||
-               req.target == "/.well-known/AGENTS.md" ||
-               req.target == "/AGENTS.md"
+                    req.target == "/agents.md" ||
+                    req.target == "/.well-known/AGENTS.md" ||
+                    req.target == "/AGENTS.md"
                 agents_path = joinpath(pwd(), "AGENTS.md")
                 if isfile(agents_path)
                     agents_content = read(agents_path, String)
@@ -311,7 +311,7 @@ function create_handler(
                 )
             end
 
-            request = JSON.parse(body; dicttype = Dict{String,Any})
+            request = JSON.parse(body; dicttype = Dict{String, Any})
 
             # Check if method field exists
             if !haskey(request, "method")
@@ -332,7 +332,7 @@ function create_handler(
 
             # Handle initialization
             if request["method"] == "initialize"
-                params = get(request, "params", Dict{String,Any}())
+                params = get(request, "params", Dict{String, Any}())
 
                 try
                     # Use session management if available
@@ -340,17 +340,18 @@ function create_handler(
                         init_result = initialize_session!(session, params)
                     else
                         # Fallback without session management
+                        # Use latest supported version for compatibility
                         init_result = Dict(
-                            "protocolVersion" => "2024-11-05",
+                            "protocolVersion" => "2025-06-18",
                             "capabilities" => Dict(
                                 "tools" => Dict(),
                                 "prompts" => Dict(),
                                 "resources" => Dict(),
                                 "logging" => Dict(),
                                 "experimental" => Dict(
-                                    "vscode_integration" => true,
-                                    "supervisor_mode" => true,
-                                    "proxy_routing" => true,
+                                    "vscode_integration" => Dict(),
+                                    "supervisor_mode" => Dict(),
+                                    "proxy_routing" => Dict(),
                                 ),
                             ),
                             "serverInfo" =>
@@ -554,10 +555,10 @@ function create_handler(
             if request["method"] == "tools/list"
                 tool_list = [
                     Dict(
-                        "name" => tool.name,
-                        "description" => tool.description,
-                        "inputSchema" => tool.parameters,
-                    ) for tool in values(tools)
+                            "name" => tool.name,
+                            "description" => tool.description,
+                            "inputSchema" => tool.parameters,
+                        ) for tool in values(tools)
                 ]
 
                 response = Dict(
@@ -634,10 +635,10 @@ function create_handler(
             request_id = 0  # Default to 0 instead of nothing to satisfy JSON-RPC schema
             try
                 if !isempty(body)
-                    parsed_request = JSON.parse(body; dicttype = Dict{String,Any})
+                    parsed_request = JSON.parse(body; dicttype = Dict{String, Any})
                     # Only use the request ID if it's a valid JSON-RPC ID (string or number)
                     raw_id = get(parsed_request, :id, 0)
-                    if raw_id isa Union{String,Number}
+                    if raw_id isa Union{String, Number}
                         request_id = raw_id
                     end
                 end
@@ -662,15 +663,15 @@ end
 
 
 function start_mcp_server(
-    tools::Vector{MCPTool},
-    port::Int = 3000;
-    verbose::Bool = true,
-    security_config::Union{SecurityConfig,Nothing} = nothing,
-)
+        tools::Vector{MCPTool},
+        port::Int = 3000;
+        verbose::Bool = true,
+        security_config::Union{SecurityConfig, Nothing} = nothing,
+    )
     # Build symbol-keyed registry
-    tools_dict = Dict{Symbol,MCPTool}(tool.id => tool for tool in tools)
+    tools_dict = Dict{Symbol, MCPTool}(tool.id => tool for tool in tools)
     # Build string→symbol mapping for JSON-RPC
-    name_to_id = Dict{String,Symbol}(tool.name => tool.id for tool in tools)
+    name_to_id = Dict{String, Symbol}(tool.name => tool.id for tool in tools)
 
     # Create session for this server
     session = MCPSession()
@@ -695,7 +696,7 @@ function start_mcp_server(
                 # Parse request body to get request_id
                 request_id = nothing
                 try
-                    response_data = JSON.parse(body; dicttype = Dict{String,Any})
+                    response_data = JSON.parse(body; dicttype = Dict{String, Any})
                     request_id = get(response_data, "request_id", nothing)
                 catch e
                     # Will fail validation below if can't parse
@@ -810,9 +811,9 @@ function start_mcp_server(
         try
             # Handle AGENTS.md endpoint (can have empty body for GET requests)
             if req.target == "/.well-known/agents.md" ||
-               req.target == "/agents.md" ||
-               req.target == "/.well-known/AGENTS.md" ||
-               req.target == "/AGENTS.md"
+                    req.target == "/agents.md" ||
+                    req.target == "/.well-known/AGENTS.md" ||
+                    req.target == "/AGENTS.md"
                 agents_path = joinpath(pwd(), "AGENTS.md")
                 if isfile(agents_path)
                     agents_content = read(agents_path, String)
@@ -833,7 +834,7 @@ function start_mcp_server(
             # Handle VS Code response endpoint FIRST (before any JSON parsing)
             if req.target == "/vscode-response" && req.method == "POST"
                 try
-                    response_data = JSON.parse(body; dicttype = Dict{String,Any})
+                    response_data = JSON.parse(body; dicttype = Dict{String, Any})
                     request_id = get(response_data, "request_id", nothing)
 
                     if request_id === nothing
@@ -907,7 +908,7 @@ function start_mcp_server(
             HTTP.startwrite(http)
 
             request_id = try
-                parsed = JSON.parse(body; dicttype = Dict{String,Any})
+                parsed = JSON.parse(body; dicttype = Dict{String, Any})
                 get(parsed, :id, 0)
             catch
                 0
@@ -951,5 +952,5 @@ function stop_mcp_server(server::MCPServer)
     end
 
     HTTP.close(server.server)
-    println("MCP Server stopped")
+    return println("MCP Server stopped")
 end

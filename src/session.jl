@@ -96,9 +96,9 @@ function get_server_capabilities()
         "resources" => Dict{String, Any}(),  # We support resources
         "logging" => Dict{String, Any}(),  # We support logging
         "experimental" => Dict{String, Any}(
-            "vscode_integration" => true,  # Custom VS Code integration
-            "supervisor_mode" => true,     # Multi-agent supervision
-            "proxy_routing" => true,       # Proxy-based routing
+            "vscode_integration" => Dict{String, Any}(),  # Custom VS Code integration
+            "supervisor_mode" => Dict{String, Any}(),     # Multi-agent supervision
+            "proxy_routing" => Dict{String, Any}(),       # Proxy-based routing
         ),
     )
 end
@@ -144,21 +144,32 @@ function initialize_session!(session::MCPSession, params::Dict)
     # We negotiate down to the highest mutually supported version
     server_supported_versions = ["2024-11-05", "2025-06-18"]
     latest_supported = last(server_supported_versions)
+    oldest_supported = first(server_supported_versions)
 
-    # Version negotiation: find the highest version that both client and server support
-    # If client requests a newer version, negotiate down to the highest we support
-    # If client requests an older or equal version we support, use that
+    # Version negotiation per MCP spec:
+    # Find the highest server-supported version that is <= client's requested version
+    # This handles: exact matches, newer client versions, and intermediate versions
     supported_version = nothing
 
     if client_version in server_supported_versions
-        # Client requested a version we fully support
+        # Client requested a version we explicitly support - use it
         supported_version = client_version
-    elseif client_version > latest_supported
-        # Client requested newer version - negotiate down to highest we support
-        supported_version = latest_supported
-        @info "Protocol version negotiation" client_requested = client_version server_negotiated = supported_version
-    else
-        # Client requested an unsupported version
+    elseif client_version >= oldest_supported
+        # Client version is >= our oldest supported version
+        # Find the highest supported version <= client's version
+        for v in reverse(server_supported_versions)
+            if v <= client_version
+                supported_version = v
+                break
+            end
+        end
+        if supported_version != client_version
+            @info "Protocol version negotiation" client_requested = client_version server_negotiated = supported_version
+        end
+    end
+
+    if supported_version === nothing
+        # Client requested a version older than our oldest supported
         session.state = UNINITIALIZED
         error(
             "Unsupported protocol version: $client_version. Server supports: $(join(server_supported_versions, ", "))",
